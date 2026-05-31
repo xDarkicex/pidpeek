@@ -3,7 +3,11 @@
 // Package windows provides Windows-specific process metrics via Windows API.
 package windows
 
-import "errors"
+import (
+	"errors"
+
+	syswindows "golang.org/x/sys/windows"
+)
 
 // Sentinels for internal windows package.
 var (
@@ -28,14 +32,70 @@ type Identity struct {
 	ExePath    string
 }
 
-// ProcessMetrics retrieves process metrics for the given PID.
+// ProcessMetrics retrieves resource usage for the given PID.
+// Pass pid=-1 for the current process.
 func ProcessMetrics(pid int) (Metrics, error) {
-	// TODO: implement Windows API calls
-	return Metrics{}, ErrProcessNotFound
+	handle, err := getHandle(pid)
+	if err != nil {
+		return Metrics{}, mapProcessError(err)
+	}
+	defer closeHandle(handle)
+
+	mc, err := getProcessMemoryInfo(handle)
+	if err != nil {
+		return Metrics{}, mapProcessError(err)
+	}
+
+	cpuSec, _, err := getProcessTimes(handle)
+	if err != nil {
+		return Metrics{}, mapProcessError(err)
+	}
+
+	return Metrics{
+		RSS:         mc.WorkingSetSize,
+		VMSSize:     mc.PagefileUsage,
+		CPUTotalSec: cpuSec,
+		ThreadNum:   0,
+	}, nil
 }
 
 // ProcessIdentity retrieves process identity for the given PID.
+// Pass pid=-1 for the current process.
 func ProcessIdentity(pid int) (Identity, error) {
-	// TODO: implement Windows API calls
-	return Identity{}, ErrProcessNotFound
+	handle, err := getHandle(pid)
+	if err != nil {
+		return Identity{}, mapProcessError(err)
+	}
+	defer closeHandle(handle)
+
+	_, createTime, err := getProcessTimes(handle)
+	if err != nil {
+		return Identity{}, mapProcessError(err)
+	}
+
+	exePath := queryFullProcessImageName(handle)
+
+	return Identity{
+		Name:       "",
+		Ppid:       0,
+		CreateTime: createTime,
+		ExePath:    exePath,
+	}, nil
+}
+
+// getHandle returns a process handle for the given PID.
+// pid=-1 returns the current process pseudo-handle.
+func getHandle(pid int) (syswindows.Handle, error) {
+	if pid == -1 {
+		return syswindows.CurrentProcess(), nil
+	}
+	return openProcess(uint32(pid))
+}
+
+// mapProcessError maps Windows API errors to sentinel errors.
+func mapProcessError(err error) error {
+	if errors.Is(err, syswindows.ERROR_ACCESS_DENIED) {
+		return ErrAccessDenied
+	}
+	return err
 }

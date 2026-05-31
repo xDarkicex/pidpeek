@@ -5,8 +5,6 @@ package pidpeek
 import (
 	"errors"
 
-	syswindows "golang.org/x/sys/windows"
-
 	"github.com/xDarkicex/pidpeek/internal/windows"
 )
 
@@ -87,6 +85,3 @@ func mapWindowsError(err error) error {
 		return err
 	}
 }
-
-// keep syswindows linked for Windows API types.
-var _ = syswindows.PROCESS_QUERY_LIMITED_INFORMATION
