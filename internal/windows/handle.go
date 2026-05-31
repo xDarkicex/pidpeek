@@ -26,13 +26,30 @@ type PROCESS_MEMORY_COUNTERS_EX struct {
 }
 
 var (
-	modKernel32       = syswindows.NewLazySystemDLL("kernel32.dll")
-	modPsapi          = syswindows.NewLazySystemDLL("psapi.dll")
-	procGetProcessMemoryInfo = modPsapi.NewProc("GetProcessMemoryInfo")
-	procQueryFullProcessImageNameW = modKernel32.NewProc("QueryFullProcessImageNameW")
+	modKernel32                      = syswindows.NewLazySystemDLL("kernel32.dll")
+	modPsapi                         = syswindows.NewLazySystemDLL("psapi.dll")
+	procGetProcessMemoryInfo         = modPsapi.NewProc("GetProcessMemoryInfo")
+	procQueryFullProcessImageNameW   = modKernel32.NewProc("QueryFullProcessImageNameW")
+	procCreateToolhelp32Snapshot     = modKernel32.NewProc("CreateToolhelp32Snapshot")
+	procThread32First                = modKernel32.NewProc("Thread32First")
+	procThread32Next                 = modKernel32.NewProc("Thread32Next")
 )
 
-const processQueryLimitedInformation = 0x1000
+// THREADENTRY32 is defined per Windows SDK tlhelp32.h — 28 bytes.
+type THREADENTRY32 struct {
+	DwSize             uint32 // offset 0
+	CntUsage           uint32 // offset 4
+	Th32ThreadID       uint32 // offset 8
+	Th32OwnerProcessID uint32 // offset 12
+	TpBasePri          int32  // offset 16
+	TpDeltaPri         int32  // offset 20
+	DwFlags            uint32 // offset 24
+}
+
+const (
+	processQueryLimitedInformation = 0x1000
+	th32csSnapthread               = 0x00000004
+)
 
 const fileTimeEpochOffset = 116444736000000000 // 100ns ticks from 1601-01-01 to 1970-01-01
 
@@ -102,4 +119,43 @@ func queryFullProcessImageName(handle syswindows.Handle) string {
 		return ""
 	}
 	return syswindows.UTF16ToString(buf[:size])
+}
+
+// countProcessThreads counts threads for the given PID via ToolHelp snapshot.
+// Returns 0 if the snapshot fails — thread count is best-effort.
+func countProcessThreads(pid uint32) int32 {
+	snapshot, _, _ := procCreateToolhelp32Snapshot.Call(
+		uintptr(th32csSnapthread),
+		0, // all processes
+	)
+	if snapshot == ^uintptr(0) { // INVALID_HANDLE_VALUE
+		return 0
+	}
+	defer syswindows.CloseHandle(syswindows.Handle(snapshot))
+
+	var te THREADENTRY32
+	te.DwSize = uint32(unsafe.Sizeof(te))
+
+	r1, _, _ := procThread32First.Call(
+		snapshot,
+		uintptr(unsafe.Pointer(&te)),
+	)
+	if r1 == 0 {
+		return 0
+	}
+
+	var count int32
+	for {
+		if te.Th32OwnerProcessID == pid {
+			count++
+		}
+		r1, _, _ := procThread32Next.Call(
+			snapshot,
+			uintptr(unsafe.Pointer(&te)),
+		)
+		if r1 == 0 {
+			break
+		}
+	}
+	return count
 }

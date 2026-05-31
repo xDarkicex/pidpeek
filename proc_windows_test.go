@@ -40,3 +40,31 @@ func TestPROCESSMEMORYCOUNTERSEXOffsets(t *testing.T) {
 		}
 	}
 }
+
+func TestTHREADENTRY32Size(t *testing.T) {
+	if got := unsafe.Sizeof(windows.THREADENTRY32{}); got != 28 {
+		t.Fatalf("THREADENTRY32 size=%d want 28", got)
+	}
+}
+
+func TestTHREADENTRY32Offsets(t *testing.T) {
+	var te windows.THREADENTRY32
+	tests := []struct {
+		field string
+		got   uintptr
+		want  uintptr
+	}{
+		{"DwSize", unsafe.Offsetof(te.DwSize), 0},
+		{"CntUsage", unsafe.Offsetof(te.CntUsage), 4},
+		{"Th32ThreadID", unsafe.Offsetof(te.Th32ThreadID), 8},
+		{"Th32OwnerProcessID", unsafe.Offsetof(te.Th32OwnerProcessID), 12},
+		{"TpBasePri", unsafe.Offsetof(te.TpBasePri), 16},
+		{"TpDeltaPri", unsafe.Offsetof(te.TpDeltaPri), 20},
+		{"DwFlags", unsafe.Offsetof(te.DwFlags), 24},
+	}
+	for _, tt := range tests {
+		if tt.got != tt.want {
+			t.Errorf("%s offset=%d want %d", tt.field, tt.got, tt.want)
+		}
+	}
+}

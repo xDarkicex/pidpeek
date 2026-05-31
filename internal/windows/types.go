@@ -51,11 +51,17 @@ func ProcessMetrics(pid int) (Metrics, error) {
 		return Metrics{}, mapProcessError(err)
 	}
 
+	threadPid := uint32(pid)
+	if pid == -1 {
+		threadPid = uint32(syswindows.GetCurrentProcessId())
+	}
+	threadNum := countProcessThreads(threadPid)
+
 	return Metrics{
 		RSS:         mc.WorkingSetSize,
 		VMSSize:     mc.PagefileUsage,
 		CPUTotalSec: cpuSec,
-		ThreadNum:   0,
+		ThreadNum:   threadNum,
 	}, nil
 }
 
