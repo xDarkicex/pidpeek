@@ -1,62 +1,80 @@
 //go:build linux
 
-// Package pidpeek retrieves process metrics (RSS, CPU, thread count) on Linux.
 package pidpeek
 
 import (
-	"fmt"
+	"errors"
 	"os"
-	"runtime"
 
 	"github.com/xDarkicex/pidpeek/internal/linux"
 )
 
-// Ensure defaultInspector satisfies Inspector interface.
 var _ Inspector = (*defaultInspector)(nil)
 
-func Get(pid int) (Metrics, error) {
+// Get retrieves process metrics for the given PID on Linux.
+func (d *defaultInspector) Get(pid int) (Metrics, error) {
 	if pid == 0 {
 		return Metrics{}, ErrProcessNotFound
 	}
-	metrics, err := linux.ProcessMetrics(pid)
+	m, err := linux.ProcessMetrics(pid)
 	if err != nil {
-		return Metrics{}, wrapErr("Get", pid, err)
+		return Metrics{}, wrapErr("Get", pid, mapLinuxError(err))
 	}
-	return metrics, nil
+	return Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum}, nil
 }
 
-func GetIdentity(pid int) (Identity, error) {
+// GetIdentity retrieves process identity for the given PID on Linux.
+func (d *defaultInspector) GetIdentity(pid int) (Identity, error) {
 	if pid == 0 {
 		return Identity{}, ErrProcessNotFound
 	}
-	identity, err := linux.ProcessIdentity(pid)
+	id, err := linux.ProcessIdentity(pid)
 	if err != nil {
-		return Identity{}, wrapErr("GetIdentity", pid, err)
+		return Identity{}, wrapErr("GetIdentity", pid, mapLinuxError(err))
 	}
-	return identity, nil
+	return Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath}, nil
 }
 
-func GetAll(pid int) (ProcessInfo, error) {
+// GetAll retrieves both metrics and identity for the given PID on Linux.
+func (d *defaultInspector) GetAll(pid int) (ProcessInfo, error) {
 	if pid == 0 {
 		return ProcessInfo{}, ErrProcessNotFound
 	}
-	metrics, err := linux.ProcessMetrics(pid)
+	m, err := linux.ProcessMetrics(pid)
 	if err != nil {
-		return ProcessInfo{}, wrapErr("GetAll", pid, err)
+		return ProcessInfo{}, wrapErr("GetAll", pid, mapLinuxError(err))
 	}
-	identity, err := linux.ProcessIdentity(pid)
+	id, err := linux.ProcessIdentity(pid)
 	if err != nil {
-		return ProcessInfo{}, wrapErr("GetAll", pid, err)
+		return ProcessInfo{}, wrapErr("GetAll", pid, mapLinuxError(err))
 	}
-	return ProcessInfo{Metrics: metrics, Identity: identity}, nil
+	return ProcessInfo{
+		Metrics:  Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum},
+		Identity: Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath},
+	}, nil
 }
 
-func Self() (Metrics, error) {
-	return Get(os.Getpid())
+// Self retrieves metrics for the current process on Linux.
+func (d *defaultInspector) Self() (Metrics, error) {
+	return d.Get(os.Getpid())
 }
 
-func SelfIdentity() (Identity, error) {
-	return GetIdentity(os.Getpid())
+// SelfIdentity retrieves identity for the current process on Linux.
+func (d *defaultInspector) SelfIdentity() (Identity, error) {
+	return d.GetIdentity(os.Getpid())
 }
 
-var _ = runtime.Pinner // ensure pinner is linked
+// mapLinuxError maps internal linux sentinel errors to the unified taxonomy
+// so that callers can use errors.Is against pidpeek.ErrProcessNotFound etc.
+func mapLinuxError(err error) error {
+	switch {
+	case errors.Is(err, linux.ErrProcessNotFound):
+		return ErrProcessNotFound
+	case errors.Is(err, linux.ErrAccessDenied):
+		return ErrAccessDenied
+	case errors.Is(err, linux.ErrResourceExhausted):
+		return ErrResourceExhausted
+	default:
+		return err
+	}
+}

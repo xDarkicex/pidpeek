@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package darwin provides Darwin-specific process metrics via libproc.
 package darwin
 
@@ -72,11 +74,11 @@ type ProcBsdInfo struct {
 	Pbi_nice        int32     // 116
 	Pbi_start_tvsec  uint64   // 120
 	Pbi_start_tvusec uint64   // 128
-	_               [8]byte   // 136 trailing padding to struct size 136
+	_               [8]byte // 136 trailing padding to struct size 136
 }
 
-var _ = unsafe.Offsetof(ProcBsdInfo{}.Pbi_ppid) // assert offset at compile time
-
+// ProcessMetrics retrieves resource usage for the given PID.
+// Pass pid=-1 for the current process.
 func ProcessMetrics(pid int) (Metrics, error) {
 	if err := ensureInit(); err != nil {
 		return Metrics{}, err
@@ -88,6 +90,7 @@ func ProcessMetrics(pid int) (Metrics, error) {
 	return processMetricsForPid(pid)
 }
 
+// processMetricsForPid calls proc_pidinfo with PROC_PIDTASKINFO and populates Metrics.
 func processMetricsForPid(pid int) (Metrics, error) {
 	var pinner runtime.Pinner
 	buf := make([]byte, 96)
@@ -113,6 +116,8 @@ func processMetricsForPid(pid int) (Metrics, error) {
 	}, nil
 }
 
+// ProcessIdentity retrieves identity information for the given PID.
+// Pass pid=-1 for the current process.
 func ProcessIdentity(pid int) (Identity, error) {
 	if err := ensureInit(); err != nil {
 		return Identity{}, err
@@ -124,6 +129,7 @@ func ProcessIdentity(pid int) (Identity, error) {
 	return processIdentityForPid(pid)
 }
 
+// processIdentityForPid calls proc_pidinfo with PROC_PIDTBSDINFO and populates Identity.
 func processIdentityForPid(pid int) (Identity, error) {
 	var pinner runtime.Pinner
 	buf := make([]byte, 136)
@@ -160,6 +166,8 @@ func processIdentityForPid(pid int) (Identity, error) {
 	}, nil
 }
 
+// readNullTerminated converts a null-terminated byte array to a string.
+// Returns the entire buffer as a string if no null byte is found.
 func readNullTerminated(buf []byte) string {
 	n := bytes.IndexByte(buf, 0)
 	if n < 0 {
@@ -168,6 +176,8 @@ func readNullTerminated(buf []byte) string {
 	return string(buf[:n])
 }
 
+// readExePath reads the executable path for the given PID via proc_pidpath.
+// Returns an empty string if the path cannot be read.
 func readExePath(pid int) string {
 	var pinner runtime.Pinner
 	pathBuf := make([]byte, ProcPidPathInfoMaxSize)

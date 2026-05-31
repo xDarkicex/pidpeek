@@ -1,6 +1,8 @@
 // Package pidpeek provides process metrics retrieval across platforms.
 package pidpeek
 
+import "fmt"
+
 // FormatBytes formats bytes as IEC binary: KiB, MiB, GiB.
 func FormatBytes(n uint64) string {
 	const unit = 1024

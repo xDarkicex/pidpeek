@@ -1,73 +1,92 @@
 //go:build windows
 
-// Package pidpeek retrieves process metrics (RSS, CPU, thread count) on Windows.
 package pidpeek
 
 import (
-	"fmt"
-	"runtime"
-	"unsafe"
+	"errors"
 
-	"golang.org/x/sys/windows"
+	syswindows "golang.org/x/sys/windows"
 
 	"github.com/xDarkicex/pidpeek/internal/windows"
 )
 
-// Ensure defaultInspector satisfies Inspector interface.
 var _ Inspector = (*defaultInspector)(nil)
 
-func Get(pid int) (Metrics, error) {
+// Get retrieves process metrics for the given PID on Windows.
+func (d *defaultInspector) Get(pid int) (Metrics, error) {
 	if pid == 0 {
 		return Metrics{}, ErrProcessNotFound
 	}
-	metrics, err := windows.ProcessMetrics(pid)
+	m, err := windows.ProcessMetrics(pid)
 	if err != nil {
-		return Metrics{}, wrapErr("Get", pid, err)
+		return Metrics{}, wrapErr("Get", pid, mapWindowsError(err))
 	}
-	return metrics, nil
+	return Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum}, nil
 }
 
-func GetIdentity(pid int) (Identity, error) {
+// GetIdentity retrieves process identity for the given PID on Windows.
+func (d *defaultInspector) GetIdentity(pid int) (Identity, error) {
 	if pid == 0 {
 		return Identity{}, ErrProcessNotFound
 	}
-	identity, err := windows.ProcessIdentity(pid)
+	id, err := windows.ProcessIdentity(pid)
 	if err != nil {
-		return Identity{}, wrapErr("GetIdentity", pid, err)
+		return Identity{}, wrapErr("GetIdentity", pid, mapWindowsError(err))
 	}
-	return identity, nil
+	return Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath}, nil
 }
 
-func GetAll(pid int) (ProcessInfo, error) {
+// GetAll retrieves both metrics and identity for the given PID on Windows.
+func (d *defaultInspector) GetAll(pid int) (ProcessInfo, error) {
 	if pid == 0 {
 		return ProcessInfo{}, ErrProcessNotFound
 	}
-	metrics, err := windows.ProcessMetrics(pid)
+	m, err := windows.ProcessMetrics(pid)
 	if err != nil {
-		return ProcessInfo{}, wrapErr("GetAll", pid, err)
+		return ProcessInfo{}, wrapErr("GetAll", pid, mapWindowsError(err))
 	}
-	identity, err := windows.ProcessIdentity(pid)
+	id, err := windows.ProcessIdentity(pid)
 	if err != nil {
-		return ProcessInfo{}, wrapErr("GetAll", pid, err)
+		return ProcessInfo{}, wrapErr("GetAll", pid, mapWindowsError(err))
 	}
-	return ProcessInfo{Metrics: metrics, Identity: identity}, nil
+	return ProcessInfo{
+		Metrics:  Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum},
+		Identity: Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath},
+	}, nil
 }
 
-func Self() (Metrics, error) {
-	metrics, err := windows.ProcessMetrics(-1)
+// Self retrieves metrics for the current process on Windows.
+func (d *defaultInspector) Self() (Metrics, error) {
+	m, err := windows.ProcessMetrics(-1)
 	if err != nil {
-		return Metrics{}, wrapErr("Self", 0, err)
+		return Metrics{}, wrapErr("Self", 0, mapWindowsError(err))
 	}
-	return metrics, nil
+	return Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum}, nil
 }
 
-func SelfIdentity() (Identity, error) {
-	identity, err := windows.ProcessIdentity(-1)
+// SelfIdentity retrieves identity for the current process on Windows.
+func (d *defaultInspector) SelfIdentity() (Identity, error) {
+	id, err := windows.ProcessIdentity(-1)
 	if err != nil {
-		return Identity{}, wrapErr("SelfIdentity", 0, err)
+		return Identity{}, wrapErr("SelfIdentity", 0, mapWindowsError(err))
 	}
-	return identity, nil
+	return Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath}, nil
 }
 
-var _ = runtime.Pinner // ensure pinner is linked
-var _ unsafe.Pointer   // ensure unsafe is linked
+// mapWindowsError maps internal windows sentinel errors to the unified taxonomy
+// so that callers can use errors.Is against pidpeek.ErrProcessNotFound etc.
+func mapWindowsError(err error) error {
+	switch {
+	case errors.Is(err, windows.ErrProcessNotFound):
+		return ErrProcessNotFound
+	case errors.Is(err, windows.ErrAccessDenied):
+		return ErrAccessDenied
+	case errors.Is(err, windows.ErrResourceExhausted):
+		return ErrResourceExhausted
+	default:
+		return err
+	}
+}
+
+// keep syswindows linked for Windows API types.
+var _ = syswindows.PROCESS_QUERY_LIMITED_INFORMATION

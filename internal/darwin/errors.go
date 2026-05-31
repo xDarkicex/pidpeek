@@ -1,3 +1,5 @@
+//go:build darwin
+
 // Package darwin provides Darwin-specific process metrics via libproc.
 package darwin
 

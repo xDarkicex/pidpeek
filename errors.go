@@ -1,7 +1,10 @@
 // Package pidpeek provides process metrics retrieval across platforms.
 package pidpeek
 
-import "errors"
+import (
+	"errors"
+	"fmt"
+)
 
 // Sentinel errors used across all platforms.
 var (

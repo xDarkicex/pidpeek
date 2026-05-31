@@ -3,16 +3,15 @@
 package pidpeek
 
 import (
-	"fmt"
-
-	"github.com/ebitengine/purego"
+	"errors"
 
 	"github.com/xDarkicex/pidpeek/internal/darwin"
 )
 
 var _ Inspector = (*defaultInspector)(nil)
 
-func Get(pid int) (Metrics, error) {
+// Get retrieves process metrics for the given PID on Darwin.
+func (d *defaultInspector) Get(pid int) (Metrics, error) {
 	if pid == 0 {
 		return Metrics{}, ErrProcessNotFound
 	}
@@ -21,12 +20,13 @@ func Get(pid int) (Metrics, error) {
 	}
 	m, err := darwin.ProcessMetrics(pid)
 	if err != nil {
-		return Metrics{}, wrapErr("Get", pid, err)
+		return Metrics{}, wrapErr("Get", pid, mapDarwinError(err))
 	}
 	return Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum}, nil
 }
 
-func GetIdentity(pid int) (Identity, error) {
+// GetIdentity retrieves process identity for the given PID on Darwin.
+func (d *defaultInspector) GetIdentity(pid int) (Identity, error) {
 	if pid == 0 {
 		return Identity{}, ErrProcessNotFound
 	}
@@ -35,12 +35,13 @@ func GetIdentity(pid int) (Identity, error) {
 	}
 	id, err := darwin.ProcessIdentity(pid)
 	if err != nil {
-		return Identity{}, wrapErr("GetIdentity", pid, err)
+		return Identity{}, wrapErr("GetIdentity", pid, mapDarwinError(err))
 	}
 	return Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath}, nil
 }
 
-func GetAll(pid int) (ProcessInfo, error) {
+// GetAll retrieves both metrics and identity for the given PID on Darwin.
+func (d *defaultInspector) GetAll(pid int) (ProcessInfo, error) {
 	if pid == 0 {
 		return ProcessInfo{}, ErrProcessNotFound
 	}
@@ -49,11 +50,11 @@ func GetAll(pid int) (ProcessInfo, error) {
 	}
 	m, err := darwin.ProcessMetrics(pid)
 	if err != nil {
-		return ProcessInfo{}, wrapErr("GetAll", pid, err)
+		return ProcessInfo{}, wrapErr("GetAll", pid, mapDarwinError(err))
 	}
 	id, err := darwin.ProcessIdentity(pid)
 	if err != nil {
-		return ProcessInfo{}, wrapErr("GetAll", pid, err)
+		return ProcessInfo{}, wrapErr("GetAll", pid, mapDarwinError(err))
 	}
 	return ProcessInfo{
 		Metrics:  Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum},
@@ -61,47 +62,41 @@ func GetAll(pid int) (ProcessInfo, error) {
 	}, nil
 }
 
-func Self() (Metrics, error) {
+// Self retrieves metrics for the current process on Darwin.
+func (d *defaultInspector) Self() (Metrics, error) {
 	if err := darwin.EnsureInit(); err != nil {
 		return Metrics{}, wrapErr("Self", 0, err)
 	}
 	m, err := darwin.ProcessMetrics(-1)
 	if err != nil {
-		return Metrics{}, wrapErr("Self", 0, err)
+		return Metrics{}, wrapErr("Self", 0, mapDarwinError(err))
 	}
 	return Metrics{RSS: m.RSS, VMSSize: m.VMSSize, CPUTotalSec: m.CPUTotalSec, ThreadNum: m.ThreadNum}, nil
 }
 
-func SelfIdentity() (Identity, error) {
+// SelfIdentity retrieves identity for the current process on Darwin.
+func (d *defaultInspector) SelfIdentity() (Identity, error) {
 	if err := darwin.EnsureInit(); err != nil {
 		return Identity{}, wrapErr("SelfIdentity", 0, err)
 	}
 	id, err := darwin.ProcessIdentity(-1)
 	if err != nil {
-		return Identity{}, wrapErr("SelfIdentity", 0, err)
+		return Identity{}, wrapErr("SelfIdentity", 0, mapDarwinError(err))
 	}
 	return Identity{Name: id.Name, Ppid: id.Ppid, CreateTime: id.CreateTime, ExePath: id.ExePath}, nil
 }
 
-func loadLibraries() error {
-	libSystem, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	if err != nil {
-		return fmt.Errorf("pidpeek: dlopen libSystem.B.dylib: %w", err)
+// mapDarwinError maps internal darwin sentinel errors to the unified taxonomy
+// so that callers can use errors.Is against pidpeek.ErrProcessNotFound etc.
+func mapDarwinError(err error) error {
+	switch {
+	case errors.Is(err, darwin.ErrProcessNotFound):
+		return ErrProcessNotFound
+	case errors.Is(err, darwin.ErrAccessDenied):
+		return ErrAccessDenied
+	case errors.Is(err, darwin.ErrResourceExhausted):
+		return ErrResourceExhausted
+	default:
+		return err
 	}
-	libProc, err := purego.Dlopen("/usr/lib/libproc.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
-	if err != nil {
-		return fmt.Errorf("pidpeek: dlopen libproc.dylib: %w", err)
-	}
-	purego.RegisterLibFunc(&darwin.MachTimebaseInfo, libSystem, "mach_timebase_info")
-	purego.RegisterLibFunc(&darwin.ProcPidinfo, libProc, "proc_pidinfo")
-	purego.RegisterLibFunc(&darwin.ProcPidpath, libProc, "proc_pidpath")
-
-	var info darwin.MachTimebaseInfoData
-	darwin.MachTimebaseInfo(&info)
-	darwin.TimebaseRatioVal = float64(info.Numer) / float64(info.Denom)
-	return nil
-}
-
-func init() {
-	darwin.SetInitFunction(loadLibraries)
 }
