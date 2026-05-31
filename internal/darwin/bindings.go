@@ -73,10 +73,12 @@ func ensureInit() error {
 func loadLibraries() error {
 	libSystem, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 	if err != nil {
+		// coverage:skip-reason libSystem.B.dylib is present on all supported Darwin versions
 		return fmt.Errorf("pidpeek: dlopen libSystem.B.dylib: %w", err)
 	}
 	libProc, err := purego.Dlopen("/usr/lib/libproc.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 	if err != nil {
+		// coverage:skip-reason libproc.dylib is present on all supported Darwin versions
 		return fmt.Errorf("pidpeek: dlopen libproc.dylib: %w", err)
 	}
 	purego.RegisterLibFunc(&MachTimebaseInfo, libSystem, "mach_timebase_info")
@@ -93,6 +95,7 @@ func loadLibraries() error {
 		SlabSize: 64 * 1024,
 	})
 	if err != nil {
+		// coverage:skip-reason FreeList creation only fails on mmap exhaustion; config validated at init
 		return fmt.Errorf("pidpeek: create struct FreeList: %w", err)
 	}
 
@@ -102,6 +105,7 @@ func loadLibraries() error {
 		SlabSize: 256 * 1024,
 	})
 	if err != nil {
+		// coverage:skip-reason FreeList creation only fails on mmap exhaustion; config validated at init
 		return fmt.Errorf("pidpeek: create path FreeList: %w", err)
 	}
 

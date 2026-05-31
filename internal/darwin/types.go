@@ -80,6 +80,7 @@ type ProcBsdInfo struct {
 // Pass pid=-1 for the current process.
 func ProcessMetrics(pid int) (Metrics, error) {
 	if err := ensureInit(); err != nil {
+		// coverage:skip-reason init errors only occur when libSystem/libproc are missing from the system
 		return Metrics{}, err
 	}
 	if pid == -1 {
@@ -93,6 +94,7 @@ func ProcessMetrics(pid int) (Metrics, error) {
 func processMetricsForPid(pid int) (Metrics, error) {
 	pti, err := memory.FreeListAlloc[ProcTaskInfo](structFL)
 	if err != nil {
+		// coverage:skip-reason FreeList exhaustion requires 1600+ concurrent calls; not triggerable in unit tests
 		return Metrics{}, err
 	}
 	defer memory.FreeListDealloc(structFL, pti)
@@ -102,6 +104,7 @@ func processMetricsForPid(pid int) (Metrics, error) {
 	if nb <= 0 {
 		return Metrics{}, ErrProcessNotFound
 	}
+	// coverage:skip-reason partial read requires process to exit between proc_pidinfo start and return
 	if nb < size {
 		return Metrics{}, ErrProcessNotFound
 	}
@@ -120,6 +123,7 @@ func processMetricsForPid(pid int) (Metrics, error) {
 // Pass pid=-1 for the current process.
 func ProcessIdentity(pid int) (Identity, error) {
 	if err := ensureInit(); err != nil {
+		// coverage:skip-reason init errors only occur when libSystem/libproc are missing from the system
 		return Identity{}, err
 	}
 	if pid == -1 {
@@ -133,6 +137,7 @@ func ProcessIdentity(pid int) (Identity, error) {
 func processIdentityForPid(pid int) (Identity, error) {
 	pbi, err := memory.FreeListAlloc[ProcBsdInfo](structFL)
 	if err != nil {
+		// coverage:skip-reason FreeList exhaustion requires 1600+ concurrent calls; not triggerable in unit tests
 		return Identity{}, err
 	}
 	defer memory.FreeListDealloc(structFL, pbi)
@@ -142,12 +147,14 @@ func processIdentityForPid(pid int) (Identity, error) {
 	if nb <= 0 {
 		return Identity{}, ErrProcessNotFound
 	}
+	// coverage:skip-reason partial read requires process to exit between proc_pidinfo start and return
 	if nb < size {
 		return Identity{}, ErrProcessNotFound
 	}
 
 	// Name: try Pbi_name first, fall back to Pbi_comm if empty
 	name := readNullTerminated(pbi.Pbi_name[:])
+	// coverage:skip-reason all Darwin processes have Pbi_name set; fallback for kernel threads only
 	if len(name) == 0 {
 		name = readNullTerminated(pbi.Pbi_comm[:])
 	}
@@ -178,6 +185,7 @@ func readNullTerminated(buf []byte) string {
 func readExePath(pid int) string {
 	buf, err := memory.FreeListAlloc[byte](pathFL)
 	if err != nil {
+		// coverage:skip-reason FreeList exhaustion requires 127+ concurrent path reads; not triggerable in unit tests
 		return ""
 	}
 	defer memory.FreeListDealloc(pathFL, buf)
@@ -190,6 +198,7 @@ func readExePath(pid int) string {
 		return ""
 	}
 	n := bytes.IndexByte(pathSlice[:nb], 0)
+	// coverage:skip-reason kernel always null-terminates path buffers; branch exists as defensive guard
 	if n < 0 {
 		return string(pathSlice[:nb])
 	}
