@@ -1,0 +1,46 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+pidpeek
+
+# Go workspace
+go.work
+go.work.sum
+
+# Vendor (if using)
+vendor/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build output
+dist/
+build/
+
+# Test coverage
+*.cover
+coverage.txt
+
+# Environment
+.env
+.env.local
+
+# Logs
+*.log
+
+# Project
+PROJECT_PLAN.md
+CLAUDE.md
