@@ -3,6 +3,7 @@
 [![Go Reference](https://pkg.go.dev/badge/github.com/xDarkicex/pidpeek.svg)](https://pkg.go.dev/github.com/xDarkicex/pidpeek)
 [![Go Version](https://img.shields.io/badge/Go-1.25+-00ADD8.svg?style=flat-square)](https://go.dev/)
 [![License](https://img.shields.io/badge/License-MIT-green.svg?style=flat-square)](LICENSE)
+[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/xDarkicex/pidpeek/coverage/coverage.json)](https://github.com/xDarkicex/pidpeek/actions/workflows/test.yml)
 
 Cross-platform process metrics for Go — RSS, VMS, CPU time, thread count, and
 identity (name, parent PID, executable path, creation time). **No CGO, no

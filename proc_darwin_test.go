@@ -3,6 +3,7 @@
 package pidpeek
 
 import (
+	"errors"
 	"testing"
 	"unsafe"
 
@@ -60,5 +61,43 @@ func TestProcBsdInfoOffsets(t *testing.T) {
 		if tt.got != tt.want {
 			t.Errorf("%s offset=%d want %d", tt.field, tt.got, tt.want)
 		}
+	}
+}
+
+func TestMapDarwinError(t *testing.T) {
+	unknownErr := errors.New("unknown error")
+	tests := []struct {
+		name   string
+		err    error
+		wantIs error
+	}{
+		{
+			name:   "process_not_found",
+			err:    darwin.ErrProcessNotFound,
+			wantIs: ErrProcessNotFound,
+		},
+		{
+			name:   "access_denied",
+			err:    darwin.ErrAccessDenied,
+			wantIs: ErrAccessDenied,
+		},
+		{
+			name:   "resource_exhausted",
+			err:    darwin.ErrResourceExhausted,
+			wantIs: ErrResourceExhausted,
+		},
+		{
+			name:   "unknown_passthrough",
+			err:    unknownErr,
+			wantIs: unknownErr,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := mapDarwinError(tt.err)
+			if !errors.Is(got, tt.wantIs) {
+				t.Errorf("errors.Is(%v, %v) = false, want true", got, tt.wantIs)
+			}
+		})
 	}
 }

@@ -1,6 +1,7 @@
 package pidpeek
 
 import (
+	"errors"
 	"os"
 	"runtime"
 	"testing"
@@ -78,6 +79,36 @@ func TestGetIdentityPID0(t *testing.T) {
 	}
 }
 
+func TestGetNotFound(t *testing.T) {
+	_, err := Get(999999)
+	if err == nil {
+		t.Fatal("Get(999999): expected error, got nil")
+	}
+	if !errors.Is(err, ErrProcessNotFound) {
+		t.Errorf("Get(999999) error = %v, want ErrProcessNotFound", err)
+	}
+}
+
+func TestGetIdentityNotFound(t *testing.T) {
+	_, err := GetIdentity(999999)
+	if err == nil {
+		t.Fatal("GetIdentity(999999): expected error, got nil")
+	}
+	if !errors.Is(err, ErrProcessNotFound) {
+		t.Errorf("GetIdentity(999999) error = %v, want ErrProcessNotFound", err)
+	}
+}
+
+func TestGetAllNotFound(t *testing.T) {
+	_, err := GetAll(999999)
+	if err == nil {
+		t.Fatal("GetAll(999999): expected error, got nil")
+	}
+	if !errors.Is(err, ErrProcessNotFound) {
+		t.Errorf("GetAll(999999) error = %v, want ErrProcessNotFound", err)
+	}
+}
+
 func TestGetAll(t *testing.T) {
 	info, err := GetAll(os.Getpid())
 	if err != nil {
@@ -98,6 +129,70 @@ func TestGoHeapAlloc(t *testing.T) {
 	alloc := GoHeapAlloc()
 	if alloc == 0 {
 		t.Error("GoHeapAlloc is zero after GC with live heap")
+	}
+}
+
+func TestWrapErr(t *testing.T) {
+	tests := []struct {
+		name    string
+		op      string
+		pid     int
+		err     error
+		wantNil bool
+		wantMsg string
+		wantIs  error
+	}{
+		{
+			name:    "nil_error_returns_nil",
+			op:      "Get",
+			pid:     123,
+			err:     nil,
+			wantNil: true,
+		},
+		{
+			name:    "format_with_sentinel",
+			op:      "Get",
+			pid:     123,
+			err:     ErrProcessNotFound,
+			wantMsg: "pidpeek.Get 123: process not found",
+			wantIs:  ErrProcessNotFound,
+		},
+		{
+			name:    "access_denied_sentinel",
+			op:      "Self",
+			pid:     0,
+			err:     ErrAccessDenied,
+			wantMsg: "pidpeek.Self 0: access denied",
+			wantIs:  ErrAccessDenied,
+		},
+		{
+			name:    "resource_exhausted_sentinel",
+			op:      "GetAll",
+			pid:     999,
+			err:     ErrResourceExhausted,
+			wantMsg: "pidpeek.GetAll 999: resource exhausted",
+			wantIs:  ErrResourceExhausted,
+		},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			got := wrapErr(tt.op, tt.pid, tt.err)
+			if tt.wantNil {
+				if got != nil {
+					t.Errorf("wrapErr = %v, want nil", got)
+				}
+				return
+			}
+			if got == nil {
+				t.Fatal("wrapErr = nil, want non-nil")
+			}
+			if got.Error() != tt.wantMsg {
+				t.Errorf("message = %q, want %q", got.Error(), tt.wantMsg)
+			}
+			if tt.wantIs != nil && !errors.Is(got, tt.wantIs) {
+				t.Errorf("errors.Is(%v, %v) = false, want true", got, tt.wantIs)
+			}
+		})
 	}
 }
 
