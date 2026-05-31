@@ -9,6 +9,7 @@ import (
 	"unsafe"
 
 	"github.com/ebitengine/purego"
+	"github.com/xDarkicex/memory"
 )
 
 // Flavor constants for proc_pidinfo.
@@ -44,6 +45,14 @@ var (
 	initErr  error
 )
 
+// Off-heap FreeLists for struct and path buffer allocations.
+// These eliminate the heap escape and 4KB-per-call allocation that
+// dominated the memory profile (70% in readExePath alone).
+var (
+	structFL *memory.FreeList // SlotSize=160, fits ProcTaskInfo(96B) and ProcBsdInfo(136B)
+	pathFL   *memory.FreeList // SlotSize=4128, fits 4096-byte path buffer
+)
+
 // EnsureInit initializes the darwin package by loading libSystem and libproc.
 // Safe to call concurrently; uses sync.Once internally.
 func EnsureInit() error {
@@ -60,6 +69,7 @@ func ensureInit() error {
 
 // loadLibraries dlopens libSystem.B.dylib and libproc.dylib, registers
 // mach_timebase_info, proc_pidinfo, proc_pidpath, and caches the timebase ratio.
+// Also creates off-heap FreeLists for per-call struct and path buffer allocations.
 func loadLibraries() error {
 	libSystem, err := purego.Dlopen("/usr/lib/libSystem.B.dylib", purego.RTLD_NOW|purego.RTLD_GLOBAL)
 	if err != nil {
@@ -76,5 +86,24 @@ func loadLibraries() error {
 	var info MachTimebaseInfoData
 	MachTimebaseInfo(&info)
 	TimebaseRatioVal = float64(info.Numer) / float64(info.Denom)
+
+	structFL, err = memory.NewFreeList(memory.FreeListConfig{
+		PoolSize: 256 * 1024, // 256KB, ~1600 concurrent slots
+		SlotSize: 160,
+		SlabSize: 64 * 1024,
+	})
+	if err != nil {
+		return fmt.Errorf("pidpeek: create struct FreeList: %w", err)
+	}
+
+	pathFL, err = memory.NewFreeList(memory.FreeListConfig{
+		PoolSize: 512 * 1024, // 512KB, ~127 concurrent path buffers
+		SlotSize: 4128,
+		SlabSize: 256 * 1024,
+	})
+	if err != nil {
+		return fmt.Errorf("pidpeek: create path FreeList: %w", err)
+	}
+
 	return nil
 }

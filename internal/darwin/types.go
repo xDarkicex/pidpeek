@@ -5,8 +5,9 @@ package darwin
 
 import (
 	"bytes"
-	"runtime"
 	"unsafe"
+
+	"github.com/xDarkicex/memory"
 )
 
 // Metrics holds resource usage for a Darwin process.
@@ -81,7 +82,6 @@ func ProcessMetrics(pid int) (Metrics, error) {
 	if err := ensureInit(); err != nil {
 		return Metrics{}, err
 	}
-	// Special case for self
 	if pid == -1 {
 		pid = int(getpid())
 	}
@@ -89,16 +89,16 @@ func ProcessMetrics(pid int) (Metrics, error) {
 }
 
 // processMetricsForPid calls proc_pidinfo with PROC_PIDTASKINFO flavor.
-// Allocates ProcTaskInfo directly to satisfy Go 1.25 checkptr alignment.
+// Allocates ProcTaskInfo from off-heap FreeList — zero GC pressure.
 func processMetricsForPid(pid int) (Metrics, error) {
-	var pti ProcTaskInfo
-	size := int32(unsafe.Sizeof(pti))
+	pti, err := memory.FreeListAlloc[ProcTaskInfo](structFL)
+	if err != nil {
+		return Metrics{}, err
+	}
+	defer memory.FreeListDealloc(structFL, pti)
 
-	var pinner runtime.Pinner
-	pinner.Pin(&pti)
-	defer pinner.Unpin()
-
-	nb := ProcPidinfo(int32(pid), ProcPidTaskInfo, 0, unsafe.Pointer(&pti), size)
+	size := int32(unsafe.Sizeof(*pti))
+	nb := ProcPidinfo(int32(pid), ProcPidTaskInfo, 0, unsafe.Pointer(pti), size)
 	if nb <= 0 {
 		return Metrics{}, ErrProcessNotFound
 	}
@@ -122,7 +122,6 @@ func ProcessIdentity(pid int) (Identity, error) {
 	if err := ensureInit(); err != nil {
 		return Identity{}, err
 	}
-	// Special case for self
 	if pid == -1 {
 		pid = int(getpid())
 	}
@@ -130,16 +129,16 @@ func ProcessIdentity(pid int) (Identity, error) {
 }
 
 // processIdentityForPid calls proc_pidinfo with PROC_PIDTBSDINFO flavor.
-// Allocates ProcBsdInfo directly to satisfy Go 1.25 checkptr alignment.
+// Allocates from off-heap FreeLists — zero GC pressure.
 func processIdentityForPid(pid int) (Identity, error) {
-	var pbi ProcBsdInfo
-	size := int32(unsafe.Sizeof(pbi))
+	pbi, err := memory.FreeListAlloc[ProcBsdInfo](structFL)
+	if err != nil {
+		return Identity{}, err
+	}
+	defer memory.FreeListDealloc(structFL, pbi)
 
-	var pinner runtime.Pinner
-	pinner.Pin(&pbi)
-	defer pinner.Unpin()
-
-	nb := ProcPidinfo(int32(pid), ProcPidTbsdInfo, 0, unsafe.Pointer(&pbi), size)
+	size := int32(unsafe.Sizeof(*pbi))
+	nb := ProcPidinfo(int32(pid), ProcPidTbsdInfo, 0, unsafe.Pointer(pbi), size)
 	if nb <= 0 {
 		return Identity{}, ErrProcessNotFound
 	}
@@ -153,10 +152,8 @@ func processIdentityForPid(pid int) (Identity, error) {
 		name = readNullTerminated(pbi.Pbi_comm[:])
 	}
 
-	// CreateTime from start_tvsec and start_tvusec
 	createTime := int64(pbi.Pbi_start_tvsec) + int64(pbi.Pbi_start_tvusec)/1_000_000
 
-	// ExePath via proc_pidpath
 	exePath := readExePath(pid)
 
 	return Identity{
@@ -168,7 +165,6 @@ func processIdentityForPid(pid int) (Identity, error) {
 }
 
 // readNullTerminated converts a null-terminated byte array to a string.
-// Returns the entire buffer as a string if no null byte is found.
 func readNullTerminated(buf []byte) string {
 	n := bytes.IndexByte(buf, 0)
 	if n < 0 {
@@ -178,20 +174,24 @@ func readNullTerminated(buf []byte) string {
 }
 
 // readExePath reads the executable path for the given PID via proc_pidpath.
-// Returns an empty string if the path cannot be read.
+// Allocates the path buffer from the off-heap path FreeList.
 func readExePath(pid int) string {
-	var pinner runtime.Pinner
-	pathBuf := make([]byte, ProcPidPathInfoMaxSize)
-	pinner.Pin(unsafe.SliceData(pathBuf))
-	defer pinner.Unpin()
+	buf, err := memory.FreeListAlloc[byte](pathFL)
+	if err != nil {
+		return ""
+	}
+	defer memory.FreeListDealloc(pathFL, buf)
+	// buf is a *byte pointing to a 4096-byte usable region.
+	// Construct a slice over the full usable buffer.
+	pathSlice := unsafe.Slice(buf, ProcPidPathInfoMaxSize)
 
-	nb := ProcPidpath(int32(pid), unsafe.Pointer(unsafe.SliceData(pathBuf)), uint32(len(pathBuf)))
+	nb := ProcPidpath(int32(pid), unsafe.Pointer(unsafe.SliceData(pathSlice)), uint32(len(pathSlice)))
 	if nb <= 0 {
 		return ""
 	}
-	n := bytes.IndexByte(pathBuf[:nb], 0)
+	n := bytes.IndexByte(pathSlice[:nb], 0)
 	if n < 0 {
-		return string(pathBuf[:nb])
+		return string(pathSlice[:nb])
 	}
-	return string(pathBuf[:n])
+	return string(pathSlice[:n])
 }
