@@ -25,4 +25,8 @@ self_statm.alpine — cat process statm (musl)
 # docker run --rm alpine:3.20 cat /proc/self/auxv
 self_auxv.alpine — auxv vector (musl, includes AT_CLKTCK=100)
 
+# crafted: minimal auxv with AT_PAGESZ + AT_NULL, deliberately omitting AT_CLKTCK (type 17)
+# tests the fallback-to-100.0 path when the kernel/container runtime omits the entry
+self_auxv.no_clktck — 2-entry auxv (AT_PAGESZ=4096, AT_NULL) without AT_CLKTCK
+
 # captured 2026-05-30 by z3robit

@@ -99,6 +99,14 @@ func TestReadClkTck(t *testing.T) {
 			t.Errorf("ReadClkTck alpine = %f, want 100.0", clkTck)
 		}
 	})
+
+	t.Run("missing_at_clktck", func(t *testing.T) {
+		data := readTestdata(t, "self_auxv.no_clktck")
+		clkTck := linux.ReadClkTck(data)
+		if clkTck != 100.0 {
+			t.Errorf("ReadClkTck = %f, want fallback 100.0", clkTck)
+		}
+	})
 }
 
 func TestParseStatFieldsAlpine(t *testing.T) {
