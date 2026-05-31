@@ -10,7 +10,7 @@ func FormatBytes(n uint64) string {
 		return fmt.Sprintf("%d B", n)
 	}
 	div, exp := uint64(unit), 0
-	for n >= unit*unit && exp < 4 {
+	for n >= div*unit && exp < 4 {
 		div *= unit
 		exp++
 	}

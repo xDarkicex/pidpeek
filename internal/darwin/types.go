@@ -46,7 +46,6 @@ type ProcTaskInfo struct {
 	Threadnum     int32  // offset 84  ← ThreadNum
 	Numrunning    int32  // offset 88
 	Priority      int32  // offset 92
-	_             [4]byte // explicit padding to 96 bytes
 }
 
 // ProcBsdInfo is flavor 3 of proc_pidinfo — 136 bytes.
@@ -74,7 +73,6 @@ type ProcBsdInfo struct {
 	Pbi_nice        int32     // 116
 	Pbi_start_tvsec  uint64   // 120
 	Pbi_start_tvusec uint64   // 128
-	_               [8]byte // 136 trailing padding to struct size 136
 }
 
 // ProcessMetrics retrieves resource usage for the given PID.
@@ -90,22 +88,24 @@ func ProcessMetrics(pid int) (Metrics, error) {
 	return processMetricsForPid(pid)
 }
 
-// processMetricsForPid calls proc_pidinfo with PROC_PIDTASKINFO and populates Metrics.
+// processMetricsForPid calls proc_pidinfo with PROC_PIDTASKINFO flavor.
+// Allocates ProcTaskInfo directly to satisfy Go 1.25 checkptr alignment.
 func processMetricsForPid(pid int) (Metrics, error) {
+	var pti ProcTaskInfo
+	size := int32(unsafe.Sizeof(pti))
+
 	var pinner runtime.Pinner
-	buf := make([]byte, 96)
-	pinner.Pin(&buf[0])
+	pinner.Pin(&pti)
 	defer pinner.Unpin()
 
-	nb := ProcPidinfo(int32(pid), ProcPidTaskInfo, 0, unsafe.Pointer(&buf[0]), int32(len(buf)))
+	nb := ProcPidinfo(int32(pid), ProcPidTaskInfo, 0, unsafe.Pointer(&pti), size)
 	if nb <= 0 {
 		return Metrics{}, ErrProcessNotFound
 	}
-	if nb < 96 {
+	if nb < size {
 		return Metrics{}, ErrProcessNotFound
 	}
 
-	pti := (*ProcTaskInfo)(unsafe.Pointer(&buf[0]))
 	cpuSec := float64(pti.TotalUser+pti.TotalSystem) * TimebaseRatioVal / 1e9
 
 	return Metrics{
@@ -129,22 +129,23 @@ func ProcessIdentity(pid int) (Identity, error) {
 	return processIdentityForPid(pid)
 }
 
-// processIdentityForPid calls proc_pidinfo with PROC_PIDTBSDINFO and populates Identity.
+// processIdentityForPid calls proc_pidinfo with PROC_PIDTBSDINFO flavor.
+// Allocates ProcBsdInfo directly to satisfy Go 1.25 checkptr alignment.
 func processIdentityForPid(pid int) (Identity, error) {
+	var pbi ProcBsdInfo
+	size := int32(unsafe.Sizeof(pbi))
+
 	var pinner runtime.Pinner
-	buf := make([]byte, 136)
-	pinner.Pin(&buf[0])
+	pinner.Pin(&pbi)
 	defer pinner.Unpin()
 
-	nb := ProcPidinfo(int32(pid), ProcPidTbsdInfo, 0, unsafe.Pointer(&buf[0]), int32(len(buf)))
+	nb := ProcPidinfo(int32(pid), ProcPidTbsdInfo, 0, unsafe.Pointer(&pbi), size)
 	if nb <= 0 {
 		return Identity{}, ErrProcessNotFound
 	}
-	if nb < 136 {
+	if nb < size {
 		return Identity{}, ErrProcessNotFound
 	}
-
-	pbi := (*ProcBsdInfo)(unsafe.Pointer(&buf[0]))
 
 	// Name: try Pbi_name first, fall back to Pbi_comm if empty
 	name := readNullTerminated(pbi.Pbi_name[:])
@@ -181,10 +182,10 @@ func readNullTerminated(buf []byte) string {
 func readExePath(pid int) string {
 	var pinner runtime.Pinner
 	pathBuf := make([]byte, ProcPidPathInfoMaxSize)
-	pinner.Pin(&pathBuf[0])
+	pinner.Pin(unsafe.SliceData(pathBuf))
 	defer pinner.Unpin()
 
-	nb := ProcPidpath(int32(pid), unsafe.Pointer(&pathBuf[0]), uint32(len(pathBuf)))
+	nb := ProcPidpath(int32(pid), unsafe.Pointer(unsafe.SliceData(pathBuf)), uint32(len(pathBuf)))
 	if nb <= 0 {
 		return ""
 	}
