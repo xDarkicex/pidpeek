@@ -47,4 +47,4 @@ jobs:
           BLOB=$(git hash-object -w coverage.json)
           TREE=$(printf '100644 blob %s\tcoverage.json\n' "$BLOB" | git mktree)
           COMMIT=$(git commit-tree "$TREE" -m "Update coverage badge")
-          git push origin "$COMMIT":refs/heads/coverage
+          git push --force origin "$COMMIT":refs/heads/coverage
