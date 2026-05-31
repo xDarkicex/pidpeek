@@ -174,3 +174,76 @@ func TestZombieDetection(t *testing.T) {
 		t.Errorf("State = %c, want Z", fields.State)
 	}
 }
+
+// --- Integration tests (require real /proc) ---
+
+func TestProcessMetricsSelf(t *testing.T) {
+	pid := os.Getpid()
+	m, err := linux.ProcessMetrics(pid)
+	if err != nil {
+		t.Fatalf("ProcessMetrics(%d): %v", pid, err)
+	}
+	if m.RSS == 0 {
+		t.Error("ProcessMetrics RSS is zero")
+	}
+	if m.VMSSize == 0 {
+		t.Error("ProcessMetrics VMSSize is zero")
+	}
+	if m.ThreadNum < 1 {
+		t.Errorf("ProcessMetrics ThreadNum = %d, want >= 1", m.ThreadNum)
+	}
+	if m.CPUTotalSec < 0 {
+		t.Errorf("ProcessMetrics CPUTotalSec is negative: %f", m.CPUTotalSec)
+	}
+}
+
+func TestProcessIdentitySelf(t *testing.T) {
+	pid := os.Getpid()
+	id, err := linux.ProcessIdentity(pid)
+	if err != nil {
+		t.Fatalf("ProcessIdentity(%d): %v", pid, err)
+	}
+	if id.Name == "" {
+		t.Error("ProcessIdentity Name is empty")
+	}
+	if id.Ppid == 0 {
+		t.Error("ProcessIdentity Ppid is 0")
+	}
+	if id.ExePath == "" {
+		t.Error("ProcessIdentity ExePath is empty")
+	}
+}
+
+func TestProcessMetricsPID1(t *testing.T) {
+	m, err := linux.ProcessMetrics(1)
+	if err != nil {
+		t.Fatalf("ProcessMetrics(1): %v", err)
+	}
+	if m.ThreadNum < 1 {
+		t.Errorf("ProcessMetrics PID 1 ThreadNum = %d, want >= 1", m.ThreadNum)
+	}
+}
+
+func TestProcessIdentityPID1(t *testing.T) {
+	id, err := linux.ProcessIdentity(1)
+	if err != nil {
+		t.Fatalf("ProcessIdentity(1): %v", err)
+	}
+	if id.Name == "" {
+		t.Error("ProcessIdentity PID 1 Name is empty")
+	}
+}
+
+func TestProcessMetricsNotFound(t *testing.T) {
+	_, err := linux.ProcessMetrics(999999)
+	if err != linux.ErrProcessNotFound {
+		t.Errorf("ProcessMetrics(999999) error = %v, want ErrProcessNotFound", err)
+	}
+}
+
+func TestProcessIdentityNotFound(t *testing.T) {
+	_, err := linux.ProcessIdentity(999999)
+	if err != linux.ErrProcessNotFound {
+		t.Errorf("ProcessIdentity(999999) error = %v, want ErrProcessNotFound", err)
+	}
+}
