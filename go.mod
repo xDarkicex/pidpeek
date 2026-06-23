@@ -4,6 +4,6 @@ go 1.25.7
 
 require (
 	github.com/ebitengine/purego v0.8.1
-	github.com/xDarkicex/memory v1.0.33
+	github.com/xDarkicex/memory v1.0.34
 	golang.org/x/sys v0.43.0
 )
