@@ -93,7 +93,7 @@ func loadLibraries() error {
 		PoolSize: 256 * 1024, // 256KB, ~1600 concurrent slots
 		SlotSize: 160,
 		SlabSize: 64 * 1024,
-	})
+	}, 64)
 	if err != nil {
 		// coverage:skip-reason FreeList creation only fails on mmap exhaustion; config validated at init
 		return fmt.Errorf("pidpeek: create struct FreeList: %w", err)
@@ -103,7 +103,7 @@ func loadLibraries() error {
 		PoolSize: 512 * 1024, // 512KB, ~127 concurrent path buffers
 		SlotSize: 4128,
 		SlabSize: 256 * 1024,
-	})
+	}, 64)
 	if err != nil {
 		// coverage:skip-reason FreeList creation only fails on mmap exhaustion; config validated at init
 		return fmt.Errorf("pidpeek: create path FreeList: %w", err)
