@@ -132,6 +132,19 @@ func TestGoHeapAlloc(t *testing.T) {
 	}
 }
 
+func TestGoRuntime(t *testing.T) {
+	before := GoRuntime()
+	// The test itself allocates, so the cumulative counters must be monotonic.
+	_ = make([]byte, 1024)
+	after := GoRuntime()
+	if after.CumulativeAllocBytes < before.CumulativeAllocBytes {
+		t.Errorf("allocation bytes regressed: before=%d after=%d", before.CumulativeAllocBytes, after.CumulativeAllocBytes)
+	}
+	if after.CumulativeAllocObjects < before.CumulativeAllocObjects {
+		t.Errorf("allocation objects regressed: before=%d after=%d", before.CumulativeAllocObjects, after.CumulativeAllocObjects)
+	}
+}
+
 func TestWrapErr(t *testing.T) {
 	tests := []struct {
 		name    string

@@ -94,6 +94,7 @@ go run ./examples/process-info/ 1   # inspect PID 1
 | `SelfIdentity()` | `(Identity, error)` | Identity for the current process |
 | `FormatBytes(uint64)` | `string` | IEC binary formatting: KiB, MiB, GiB |
 | `GoHeapAlloc()` | `uint64` | Live heap bytes from `runtime/metrics` |
+| `GoRuntime()` | `GoRuntimeMetrics` | Fixed-size self-runtime snapshot: live heap and cumulative allocation bytes/objects |
 
 `Get(0)` returns `ErrProcessNotFound` on all platforms.
 

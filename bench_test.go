@@ -76,3 +76,10 @@ func BenchmarkGoHeapAlloc(b *testing.B) {
 		_ = GoHeapAlloc()
 	}
 }
+
+func BenchmarkGoRuntime(b *testing.B) {
+	b.ReportAllocs()
+	for b.Loop() {
+		_ = GoRuntime()
+	}
+}
